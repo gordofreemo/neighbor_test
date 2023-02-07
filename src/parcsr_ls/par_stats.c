@@ -1390,7 +1390,7 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
             MPI_INFO_NULL,
             0,
             &neighbor_comm);
-      update_locality(neighbor_comm, 4);
+//      update_locality(neighbor_comm, 4);
 
       tfinal = MPI_Wtime() - t0;
       MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
