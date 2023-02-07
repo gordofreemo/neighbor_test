@@ -1311,6 +1311,140 @@ hypre_BoomerAMGSetupStats( void               *amg_vdata,
 }
 
 
+HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
+{
+   hypre_ParAMGData *amg_data = (hypre_ParAMGData*) data;
+
+   HYPRE_Int num_levels;
+   num_levels = hypre_ParAMGDataNumLevels(amg_data);
+
+   hypre_ParCSRMatrix **A_array;
+   hypre_ParCSRCommPkg* comm_pkg;
+   A_array = hypre_ParAMGDataAArray(amg_data);
+
+   MPIX_Comm* neighbor_comm;
+   MPIX_Request* request;
+   MPI_Status status;
+
+   double t0, tfinal;
+
+   for (int i = 0; i < num_levels; i++)
+   {
+      comm_pkg = hypre_ParCSRMatrixCommPkg(A_array[i]);
+      MPI_Comm comm = hypre_ParCSRCommPkgComm(comm_pkg);
+
+      int rank, num_procs;
+      MPI_Comm_rank(comm, &rank);
+      MPI_Comm_size(comm, &num_procs);
+
+      int nsends = hypre_ParCSRCommPkgNumSends(comm_pkg);
+      int nrecvs = hypre_ParCSRCommPkgNumRecvs(comm_pkg);
+      int* sdispls = hypre_ParCSRCommPkgSendMapStarts(comm_pkg);
+      int* rdispls = hypre_ParCSRCommPkgRecvVecStarts(comm_pkg);
+      int* sendcounts = NULL;
+      int* recvcounts = NULL;
+      if (nsends)
+         sendcounts = (int*)malloc(nsends*sizeof(int));
+      if (nrecvs)
+         recvcounts = (int*)malloc(nrecvs*sizeof(int));
+      for (int i = 0; i < nsends; i++)
+         sendcounts[i] = sdispls[i+1] - sdispls[i];
+      for (int i = 0; i < nrecvs; i++)
+         recvcounts[i] = rdispls[i+1] - rdispls[i];
+      long* global_sidx = NULL;
+      double *sendbuf = NULL;
+      long* global_ridx = NULL;
+      double* recvbuf = NULL;
+      if (nsends)
+      {
+         global_sidx = (long*)malloc(sdispls[nsends]*sizeof(long));
+         sendbuf = (double*)malloc(sdispls[nsends]*sizeof(double));
+      }
+      if (nrecvs)
+      {
+         global_ridx = (long*)malloc(rdispls[nrecvs]*sizeof(long));
+         recvbuf = (double*)malloc(rdispls[nrecvs]*sizeof(double));
+      }
+
+      int* send_map_elmts = hypre_ParCSRCommPkgSendMapElmts(comm_pkg);
+      int first_col_diag = hypre_ParCSRMatrixFirstColDiag(A_array[i]);
+      int* col_map_offd = hypre_ParCSRMatrixColMapOffd(A_array[i]);
+      for (int i = 0; i < nsends; i++)
+         for (int j = sdispls[i]; j < sdispls[i+1]; j++)
+            global_sidx[j] = send_map_elmts[j] + first_col_diag;
+      for (int i = 0; i < nrecvs; i++)
+         for (int j = rdispls[i]; j < rdispls[i+1]; j++)
+            global_ridx[j] = col_map_offd[j];
+
+      // Dist Graph Create Adjacent
+      MPI_Barrier(comm);
+      t0 = MPI_Wtime();
+      MPIX_Dist_graph_create_adjacent(
+            comm,
+            nrecvs,
+            hypre_ParCSRCommPkgRecvProcs(comm_pkg),
+            recvcounts,
+            nsends,
+            hypre_ParCSRCommPkgSendProcs(comm_pkg),
+            sendcounts,
+            MPI_INFO_NULL,
+            0,
+            &neighbor_comm);
+      update_locality(neighbor_comm, 4);
+
+      tfinal = MPI_Wtime() - t0;
+      MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
+            hypre_ParCSRCommPkgComm(comm_pkg));
+      if (rank == 0) printf("Dist Graph Create Time %e\n", t0);
+
+      // Neighbor Alltoallv Init Time
+      MPI_Barrier(comm);
+      t0 = MPI_Wtime();
+      MPIX_Neighbor_locality_alltoallv_init(
+      //MPIX_Neighbor_part_locality_alltoallv_init(
+            sendbuf,
+            sendcounts, 
+            hypre_ParCSRCommPkgSendMapStarts(comm_pkg),
+            global_sidx,
+            MPI_DOUBLE, 
+            recvbuf,
+            recvcounts,
+            hypre_ParCSRCommPkgRecvVecStarts(comm_pkg),
+            global_ridx,
+            MPI_DOUBLE,
+            neighbor_comm,
+            MPI_INFO_NULL,
+            &request);
+      tfinal = MPI_Wtime() - t0;
+      MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
+            hypre_ParCSRCommPkgComm(comm_pkg));
+      if (rank == 0) printf("Neighbor Alltoallv Init Time %e\n", t0);
+
+      // Time Communication
+      MPI_Barrier(comm);
+      t0 = MPI_Wtime();
+      MPIX_Start(request);
+      MPIX_Wait(request, &status);
+      tfinal = MPI_Wtime() - t0;
+      MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
+            hypre_ParCSRCommPkgComm(comm_pkg));
+      if (rank == 0) printf("Start/Wait Time %e\n", t0);
+
+      free(sendcounts);
+      free(recvcounts);
+      free(global_sidx);
+      free(global_ridx);
+      free(sendbuf);
+      free(recvbuf);
+
+      MPIX_Request_free(request);
+      MPIX_Comm_free(neighbor_comm);
+   }
+
+
+}
+
+
 
 
 /*---------------------------------------------------------------

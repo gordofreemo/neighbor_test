@@ -64,7 +64,7 @@ hypreGPUKernel_CSRMaxEigEstimate(hypre_DeviceItem    &item,
       }
       else
       {
-         row_sum_i += hypre_abs(aij);
+         row_sum_i += fabs(aij);
       }
    }
 
@@ -78,7 +78,7 @@ hypreGPUKernel_CSRMaxEigEstimate(hypre_DeviceItem    &item,
    for (HYPRE_Int j = p + lane; j < q; j += HYPRE_WARP_SIZE)
    {
       HYPRE_Complex aij = read_only_load(&offd_aa[j]);
-      row_sum_i += hypre_abs(aij);
+      row_sum_i += fabs(aij);
    }
 
    // Get the row_sum and diagonal value on lane 0
@@ -421,7 +421,7 @@ hypre_ParCSRMaxEigEstimateCGDevice(hypre_ParCSRMatrix *A,     /* matrix to relax
       tridiag[i] += alphainv;
 
       trioffd[i + 1] = alphainv;
-      trioffd[i] *= hypre_sqrt(beta);
+      trioffd[i] *= sqrt(beta);
 
       /* x = x + alpha*p */
       /* don't need */
