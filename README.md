@@ -1,3 +1,7 @@
+TODO FOR ANDREW:
+Edit file src/parcsr_mv/new_commpkg.c
+
+
 <!--
 Copyright (c) 1998 Lawrence Livermore National Security, LLC and other
 HYPRE Project Developers. See the top-level COPYRIGHT file for details.
