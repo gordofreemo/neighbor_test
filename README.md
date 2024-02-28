@@ -1,5 +1,21 @@
 TODO FOR ANDREW:
 Edit file src/parcsr_mv/new_commpkg.c
+Replace hypre_DataExchangeList with MPI_Alltoallv_crs (start with alltoallv_crs_personalized).
+Change this method first, we may or may not want to change other call to this method https://github.com/bienz2/neighbor_test/blob/c110b4436f59bd4db87e63b947df45920cb2207f/src/parcsr_mv/new_commpkg.c#L368
+Available Alltoallv methods are listed here : https://github.com/mpi-advance/locality_aware/blob/sparse_alltoall/src/neighborhood/sparse_coll.h
+
+Here is the method that currently implements the alltoallv_crs type algorithm in hypre https://github.com/bienz2/neighbor_test/blob/c16444ce3d88759864b84b5eb5bc921b44117a4d/src/utilities/exchange_data.c#L93
+
+Mapping of variables to MPI_Alltoallv_crs:
+- send_nnz = num_contacts
+- dest = contact_proc_list
+- sendvals = contact_send_buf
+- sdispls = contact_send_buf_starts
+- sendtype is the type of sendvals that hypre is passing.  Available HYPRE MPI variables are here : https://github.com/hypre-space/hypre/blob/8d0953e780663c7ab4a55adf5c154b37364a9346/src/utilities/HYPRE_utilities.h#L45 (if hypre is passing HYPRE_Big_Int, you want to pass HYPRE_MPI_BIG_INT as the sendtype)
+- send_size = contact_send_buf_starts[num_contacts]
+- You will need to create sendcounts (int*, size of array = send_nnz integers).  To fill in the array, sendcounts[i] = sdispls[i+1] - sdispls[i]
+
+For recv variables : 
 
 
 <!--
