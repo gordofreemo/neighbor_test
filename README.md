@@ -1,22 +1,51 @@
 TODO FOR ANDREW:
-Edit file src/parcsr_mv/new_commpkg.c
-Replace hypre_DataExchangeList with MPI_Alltoallv_crs (start with alltoallv_crs_personalized).
-Change this method first, we may or may not want to change other call to this method https://github.com/bienz2/neighbor_test/blob/c110b4436f59bd4db87e63b947df45920cb2207f/src/parcsr_mv/new_commpkg.c#L368
-Available Alltoallv methods are listed here : https://github.com/mpi-advance/locality_aware/blob/sparse_alltoall/src/neighborhood/sparse_coll.h
+Edit file `src/parcsr_mv/new_commpkg.c`
+Replace `hypre_DataExchangeList` with `MPI_Alltoallv_crs` (start with `alltoallv_crs_personalized`).
+Change this method first, we may or may not want to change other call to this method `https://github.com/bienz2/neighbor_test/blob/c110b4436f59bd4db87e63b947df45920cb2207f/src/parcsr_mv/new_commpkg.c#L368`
+Available Alltoallv methods are listed here : `https://github.com/mpi-advance/locality_aware/blob/sparse_alltoall/src/neighborhood/sparse_coll.h`
 
-Here is the method that currently implements the alltoallv_crs type algorithm in hypre https://github.com/bienz2/neighbor_test/blob/c16444ce3d88759864b84b5eb5bc921b44117a4d/src/utilities/exchange_data.c#L93
+Here is the method that currently implements the alltoallv\_crs type algorithm in hypre `https://github.com/bienz2/neighbor_test/blob/c16444ce3d88759864b84b5eb5bc921b44117a4d/src/utilities/exchange_data.c#L93`
 
-Mapping of variables to MPI_Alltoallv_crs:
-- send_nnz = num_contacts
-- dest = contact_proc_list
-- sendvals = contact_send_buf
-- sdispls = contact_send_buf_starts
-- sendtype is the type of sendvals that hypre is passing.  Available HYPRE MPI variables are here : https://github.com/hypre-space/hypre/blob/8d0953e780663c7ab4a55adf5c154b37364a9346/src/utilities/HYPRE_utilities.h#L45 (if hypre is passing HYPRE_Big_Int, you want to pass HYPRE_MPI_BIG_INT as the sendtype)
-- send_size = contact_send_buf_starts[num_contacts]
-- You will need to create sendcounts (int*, size of array = send_nnz integers).  To fill in the array, sendcounts[i] = sdispls[i+1] - sdispls[i]
+Mapping of variables to `MPI_Alltoallv_crs`:
+- `send_nnz = num_contacts`
+- `dest = contact_proc_list`
+- `sendvals = contact_send_buf`
+- `sdispls = contact_send_buf_starts`
+- `sendtype` is the type of `sendvals` that hypre is passing.  Available HYPRE MPI variables are here :` https://github.com/hypre-space/hypre/blob/8d0953e780663c7ab4a55adf5c154b37364a9346/src/utilities/HYPRE_utilities.h#L45` (if hypre is passing `HYPRE_Big_Int`, you want to pass `HYPRE_MPI_BIG_INT` as the sendtype)
+- `send_size = contact_send_buf_starts[num_contacts]`
+- You will need to create `sendcounts` (int*, size of array = `send_nnz` integers).  To fill in the array,` sendcounts[i] = sdispls[i+1] - sdispls[i]`
 
 For recv variables : 
+You will need to allocate variables, so first you need to find `recv_nnz` and `recv_size`.  To do this, create an `int* recv_info = new int[2*num_procs]` allocated to all 0's.  Add to the arrays with something like this:
+```
+for i = 0 to send_nnz:
+    proc = dest[i]
+    sendcounts[i] = sdispls[i+1] - sdispls[i]
+    // First half of recv_info gives num_recvs info
+    recv_info[proc] = 1
+    // Second half of recv_info gives recv_size info
+    recv_info[proc+num_procs] = sendcounts[i]
+MPI_Allreduce(MPI_IN_PLACE, send_info, 2*num_procs, MPI_INT, MPI_SUM, comm)
+recv_nnz = send_info[rank]
+recv_size = send_info[rank + num_procs]
+```
+Then, allocate the other recv variables to pass to the method:
+```
+src = new int[recv_nnz]
+rdispls = new int[recv_nnz+1]
+recvcounts = new int[recv_nnz]
+recvvals = new T[recv_size]
+```
+`T` is the same type as sendvals (hypre's big int?)
+`recvtype` is the same as sendtype
 
+I can help you map these to the existing variables when we meet friday, but I believe that
+`hypre's num_sends = recv_nnz`
+`orig_send_map_starts = rdispls`
+`orig_send_elements = recvvals`
+you can throw away `recvcounts` after the mpi advance method, and hypre usually uses `rdispls[recv_nnz]` instead of `recv_size`, so that is likely also thrown away.
+
+Then you can let hypre continue their reordering methods as they currently do them.
 
 <!--
 Copyright (c) 1998 Lawrence Livermore National Security, LLC and other
