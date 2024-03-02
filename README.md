@@ -1,4 +1,31 @@
 TODO FOR ANDREW:
+Updated todo : 
+Edit file `src/parcsr_ls/par_stats.c`
+Time the following (in this order) : 
+1. hypre's current method (`hypre_DataExchangeList`)
+2. `MPIX_Dist_graph_create_adjacent`
+3. `MPIX_Comm_topo_init` 
+4. Each of the 4 alltoallv crs methods in MPI Advance
+5. `MPIX_Neighbor_alltoallv_init`
+6. `MPIX_Start + MPIX_Wait`
+
+You will need to create an `MPIX_Info` object as well but this just creates a local struct, no need to time it:
+```
+MPIX_Info* xinfo;
+MPIX_Info_init(&xinfo);
+...
+MPIX_Info_free(&xinfo);
+```
+
+You will also want to free the `MPIX_Comm` created with `MPIX_Dist_graph_create_adjacent` as well as the `MPIX_Request` created with `MPIX_Neighbor_alltoallv_init`.  These can be freed with `MPIX_Comm_free(&xcomm)` and `MPIX_Request_free(&xrequest)`, respectively.
+
+Let me know if you have any questions come up!
+
+
+
+
+
+Ignore below, but keeping it in case it is useful for mapping variables and such
 Edit file `src/parcsr_mv/new_commpkg.c`
 Replace `hypre_DataExchangeList` with `MPI_Alltoallv_crs` (start with `alltoallv_crs_personalized`).
 Change this method first, we may or may not want to change other call to this method `https://github.com/bienz2/neighbor_test/blob/c110b4436f59bd4db87e63b947df45920cb2207f/src/parcsr_mv/new_commpkg.c#L368`
