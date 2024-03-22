@@ -1376,6 +1376,36 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
          for (int j = rdispls[i]; j < rdispls[i+1]; j++)
             global_ridx[j] = col_map_offd[j];
 
+      // hypre_DataExchangeList
+
+      hypre_DataExchangeResponse response_obj;
+      response_obj.fill_response = hypre_FillResponseIJDetermineSendProcs;
+      response_obj.data1 = NULL;
+      response_obj.data2 NULL;
+      *response_buf = NULL;
+      *response_buf_starts = NULL;
+
+      MPI_Barrier(comm);
+      t0 = MPI_Wtime();
+      hypre_DataExchangeList(
+         nrecvs,
+         hypre_ParCSRCommPkgRecvProcs(comm_pkg),
+         sendbuf,
+         hypre_ParCSRCommPkgRecvVecStarts(comm_pkg),
+         sizeof(double),
+         sizeof(double),
+         &response_obj,
+         6,
+         1,
+         (void **) &response_buf,
+         &response_buf_starts
+      );
+      tfinal = MPI_Wtime() - t0;
+      MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
+            hypre_ParCSRCommPkgComm(comm_pkg));
+      if (rank == 0) printf("Hypre DataExchangeList time %e\n", t0);
+
+
       // Dist Graph Create Adjacent
       MPI_Barrier(comm);
       t0 = MPI_Wtime();
@@ -1396,6 +1426,150 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
             hypre_ParCSRCommPkgComm(comm_pkg));
       if (rank == 0) printf("Dist Graph Create Time %e\n", t0);
+
+      // Comm topo init
+      MPI_Barrier(comm);
+      t0 = MPI_Wtime();
+      MPIX_Comm_topo_init(neighbor_comm);
+      tfinal = MPI_Wtime() - t0;
+      MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
+            hypre_ParCSRCommPkgComm(comm_pkg));
+      if (rank == 0) printf("Comm Topo Init Time %e\n", t0);
+
+      // Initialization of variables needed for crs methods 
+      int* recv_info = new int[2*num_procs];
+      int recv_nnz, recv_size;
+      for(int i = 0; i < nrecvs; i++)
+      {
+         int proc = hypre_ParCSRCommPkgRecvProcs(comm_pkg)[i];
+         recv_info[proc] = 1;
+         recv_info[proc+num_procs] = sendcounts[i];
+      }
+      MPI_Allreduce(MPI_IN_PLACE, recv_info, 2*num_procs, MPI_INT, MPI_SUM, comm);
+      recv_nnz = recv_info[rank];
+      recv_size = recv_info[rank+num_procs];                                                                                                         
+
+      int* src = new int[recv_nnz];
+      int* rdispls = new int[recv_nnz+1];
+      int* recvcounts_2 = new int[recv_nnz];
+      int* recvvals = new double[recv_size];
+      
+      MPIX_Info* xinfo;
+      MPIX_Info_init(&xinfo);
+
+      // crs personalized 
+      MPI_Barrier(comm);
+      t0 = MPI_Wtime();
+      alltoallv_crs_personalized(
+        nrecvs,
+        hypre_ParCSRCommPkgSendMapStarts(comm_pkg)[nrecvs],
+        hypre_ParCSRCommPkgRecvProcs(comm_pkg),
+        sendcounts,
+        hypre_ParCSRCommPkgSendMapStarts(comm_pkg),
+        MPI_DOUBLE,
+        sendbuf,
+        &recv_nnz,
+        &recv_size,
+        src,
+        recvcounts_2,
+        rdispls,
+        MPI_DOUBLE,
+        recvvals,
+        xinfo,
+        &comm
+      );
+      tfinal = MPI_Wtime() - t0;
+      MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
+            hypre_ParCSRCommPkgComm(comm_pkg));
+      if (rank == 0) printf("CSR Personalized Time %e\n", t0);
+      MPIX_Info_free(&xinfo);
+
+      MPIX_Info_init(&xinfo);
+
+      // crs personalized locality-aware
+      MPI_Barrier(comm);
+      t0 = MPI_Wtime();
+      alltoallv_crs_personalized_loc(
+         nrecvs,
+         hypre_ParCSRCommPkgSendMapStarts(comm_pkg)[nrecvs],
+         hypre_ParCSRCommPkgRecvProcs(comm_pkg),
+         sendcounts,
+         hypre_ParCSRCommPkgSendMapStarts(comm_pkg),
+         MPI_DOUBLE,
+         sendbuf,
+         &recv_nnz,
+         &recv_size,
+         src,
+         recv_counts_2,
+         rdispls,
+         MPI_DOUBlE,
+         recvvals,
+         xinfo,
+         &comm
+      );
+      tfinal = MPI_Wtime() - t0;
+      MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
+            hypre_ParCSRCommPkgComm(comm_pkg));
+      if (rank == 0) printf("CSR Personalized Locality Aware Time %e\n", t0); 
+      MPIX_Info_free(&xinfo);
+
+      MPIX_Info_init(&xinfo);
+
+      // crs nonblocking
+      MPI_Barrier(comm);
+      t0 = MPI_Wtime();
+      alltoallv_crs_nonblocking(
+         nrecvs,
+         hypre_ParCSRCommPkgSendMapStarts(comm_pkg)[nrecvs],
+         hypre_ParCSRCommPkgRecvProcs(comm_pkg),
+         sendcounts,
+         hypre_ParCSRCommPkgSendMapStarts(comm_pkg),
+         MPI_DOUBLE,
+         sendbuf,
+         &recv_nnz,
+         &recv_size,
+         src,
+         recv_counts_2,
+         rdispls,
+         MPI_DOUBlE,
+         recvvals,
+         xinfo,
+         &comm
+      );
+      tfinal = MPI_Wtime() - t0;
+      MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
+            hypre_ParCSRCommPkgComm(comm_pkg));
+      if (rank == 0) printf("CSR Nonblocking Time %e\n", t0);
+      
+      MPIX_Info_free(&xinfo);
+
+      MPIX_Info_init(&xinfo);
+      // crs nonblocking locality aware
+      MPI_Barrier(comm);
+      t0 = MPI_Wtime();
+      alltoallv_crs_nonblocking_loc(
+         nrecvs,
+         hypre_ParCSRCommPkgSendMapStarts(comm_pkg)[nrecvs],
+         hypre_ParCSRCommPkgRecvProcs(comm_pkg),
+         sendcounts,
+         hypre_ParCSRCommPkgSendMapStarts(comm_pkg),
+         MPI_DOUBLE,
+         sendbuf,
+         &recv_nnz,
+         &recv_size,
+         src,
+         recv_counts_2,
+         rdispls,
+         MPI_DOUBlE,
+         recvvals,
+         xinfo,
+         &comm
+      );
+      tfinal = MPI_Wtime() - t0;
+      MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
+            hypre_ParCSRCommPkgComm(comm_pkg));
+      if (rank == 0) printf("CSR Nonblocking Locality Aware Time %e\n", t0);
+      MPIX_Info_free(&xinfo);
 
       // Neighbor Alltoallv Init Time
       MPI_Barrier(comm);
@@ -1419,8 +1593,10 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
             hypre_ParCSRCommPkgComm(comm_pkg));
       if (rank == 0) printf("Neighbor Alltoallv Init Time %e\n", t0);
+      
 
       // Time Communication
+      
       MPI_Barrier(comm);
       t0 = MPI_Wtime();
       MPIX_Start(request);
@@ -1429,6 +1605,7 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
             hypre_ParCSRCommPkgComm(comm_pkg));
       if (rank == 0) printf("Start/Wait Time %e\n", t0);
+      
 
       free(sendcounts);
       free(recvcounts);
