@@ -1381,9 +1381,9 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       hypre_DataExchangeResponse response_obj;
       response_obj.fill_response = hypre_FillResponseIJDetermineSendProcs;
       response_obj.data1 = NULL;
-      response_obj.data2 NULL;
-      *response_buf = NULL;
-      *response_buf_starts = NULL;
+      response_obj.data2 = NULL;
+      int* response_buf = NULL;
+      int* response_buf_starts = NULL;
 
       MPI_Barrier(comm);
       t0 = MPI_Wtime();
@@ -1397,6 +1397,7 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
          &response_obj,
          6,
          1,
+         comm,
          (void **) &response_buf,
          &response_buf_starts
       );
@@ -1437,7 +1438,7 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       if (rank == 0) printf("Comm Topo Init Time %e\n", t0);
 
       // Initialization of variables needed for crs methods 
-      int* recv_info = new int[2*num_procs];
+      int* recv_info = (int *) malloc(sizeof(int) * 2 * num_procs);
       int recv_nnz, recv_size;
       for(int i = 0; i < nrecvs; i++)
       {
@@ -1449,10 +1450,8 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       recv_nnz = recv_info[rank];
       recv_size = recv_info[rank+num_procs];                                                                                                         
 
-      int* src = new int[recv_nnz];
-      int* rdispls = new int[recv_nnz+1];
-      int* recvcounts_2 = new int[recv_nnz];
-      int* recvvals = new double[recv_size];
+      int* src = (int*) malloc(sizeof(int) * recv_nnz);
+      double* recvvals = (double*) malloc(sizeof(double) * recv_nnz);
       
       MPIX_Info* xinfo;
       MPIX_Info_init(&xinfo);
@@ -1476,7 +1475,7 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
         MPI_DOUBLE,
         recvvals,
         xinfo,
-        &comm
+        neighbor_comm
       );
       tfinal = MPI_Wtime() - t0;
       MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
@@ -1500,12 +1499,12 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
          &recv_nnz,
          &recv_size,
          src,
-         recv_counts_2,
+         recvcounts,
          rdispls,
-         MPI_DOUBlE,
+         MPI_DOUBLE,
          recvvals,
          xinfo,
-         &comm
+         neighbor_comm
       );
       tfinal = MPI_Wtime() - t0;
       MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
@@ -1529,12 +1528,12 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
          &recv_nnz,
          &recv_size,
          src,
-         recv_counts_2,
+         recvcounts,
          rdispls,
-         MPI_DOUBlE,
+         MPI_DOUBLE,
          recvvals,
          xinfo,
-         &comm
+         neighbor_comm
       );
       tfinal = MPI_Wtime() - t0;
       MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
@@ -1558,12 +1557,12 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
          &recv_nnz,
          &recv_size,
          src,
-         recv_counts_2,
+         recvcounts,
          rdispls,
-         MPI_DOUBlE,
+         MPI_DOUBLE,
          recvvals,
          xinfo,
-         &comm
+         neighbor_comm
       );
       tfinal = MPI_Wtime() - t0;
       MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
@@ -1615,7 +1614,7 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       free(recvbuf);
 
       MPIX_Request_free(request);
-      MPIX_Comm_free(neighbor_comm);
+      MPIX_Comm_free(&neighbor_comm);
    }
 
 
