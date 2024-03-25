@@ -1390,8 +1390,8 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       hypre_DataExchangeList(
          nrecvs,
          hypre_ParCSRCommPkgRecvProcs(comm_pkg),
-         sendbuf,
-         hypre_ParCSRCommPkgRecvVecStarts(comm_pkg),
+         col_map_offd,
+         hypre_ParCSRCommPkgRecvVecStart(comm_pkg),
          sizeof(double),
          sizeof(double),
          &response_obj,
@@ -1401,6 +1401,7 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
          (void **) &response_buf,
          &response_buf_starts
       );
+      
       tfinal = MPI_Wtime() - t0;
       MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
             hypre_ParCSRCommPkgComm(comm_pkg));
