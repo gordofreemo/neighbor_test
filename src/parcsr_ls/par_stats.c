@@ -1430,7 +1430,7 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       // Comm topo init
       MPI_Barrier(comm);
       t0 = MPI_Wtime();
-      MPIX_Comm_topo_init(neighbor_comm);
+      MPIX_Comm_topo_init(neighbor_comm); 
       tfinal = MPI_Wtime() - t0;
       MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
             hypre_ParCSRCommPkgComm(comm_pkg));
@@ -1574,17 +1574,15 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       // Neighbor Alltoallv Init Time
       MPI_Barrier(comm);
       t0 = MPI_Wtime();
-      MPIX_Neighbor_locality_alltoallv_init(
+      MPIX_Neighbor_alltoallv_init(
       //MPIX_Neighbor_part_locality_alltoallv_init(
             sendbuf,
             sendcounts, 
             hypre_ParCSRCommPkgSendMapStarts(comm_pkg),
-            global_sidx,
             MPI_DOUBLE, 
             recvbuf,
             recvcounts,
             hypre_ParCSRCommPkgRecvVecStarts(comm_pkg),
-            global_ridx,
             MPI_DOUBLE,
             neighbor_comm,
             MPI_INFO_NULL,
@@ -1606,7 +1604,7 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
             hypre_ParCSRCommPkgComm(comm_pkg));
       if (rank == 0) printf("Start/Wait Time %e\n", t0);
       
-
+      // add non-locality versions
       free(sendcounts);
       free(recvcounts);
       free(global_sidx);
