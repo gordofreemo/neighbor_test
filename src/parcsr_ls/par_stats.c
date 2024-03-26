@@ -1326,6 +1326,9 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
    MPIX_Request* request;
    MPI_Status status;
 
+   MPIX_Info* xinfo;
+   MPIX_Info_init(&xinfo);
+
    double t0, tfinal;
 
    for (int i = 0; i < num_levels; i++)
@@ -1339,6 +1342,12 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
 
       int nsends = hypre_ParCSRCommPkgNumSends(comm_pkg);
       int nrecvs = hypre_ParCSRCommPkgNumRecvs(comm_pkg);
+
+      int max_sends, max_recvs;
+      MPI_Reduce(&nsends, &max_sends, 1, MPI_INT, MPI_MAX, 0, comm);
+      MPI_Reduce(&nrecvs, &max_recvs, 1, MPI_INT, MPI_MAX, 0, comm);
+      if (rank == 0) printf("Level %d, Max Sends %d, Max Recvs %d\n", i, max_sends, max_recvs);
+
       int* sdispls = hypre_ParCSRCommPkgSendMapStarts(comm_pkg);
       int* rdispls = hypre_ParCSRCommPkgRecvVecStarts(comm_pkg);
       int* sendcounts = NULL;
@@ -1399,7 +1408,7 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
             hypre_ParCSRCommPkgRecvVecStarts(comm_pkg),
             MPI_DOUBLE,
             neighbor_comm,
-            MPI_INFO_NULL,
+            xinfo,
             &request);
       tfinal = MPI_Wtime() - t0;
       MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
@@ -1418,15 +1427,14 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
 
       free(sendcounts);
       free(recvcounts);
-      free(global_sidx);
-      free(global_ridx);
       free(sendbuf);
       free(recvbuf);
 
-      MPIX_Request_free(request);
-      MPIX_Comm_free(neighbor_comm);
+      MPIX_Request_free(&request);
+      MPIX_Comm_free(&neighbor_comm);
    }
-
+   
+   MPIX_Info_free(&xinfo);
 
 }
 
