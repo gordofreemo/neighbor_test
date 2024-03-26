@@ -1351,30 +1351,20 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
          sendcounts[i] = sdispls[i+1] - sdispls[i];
       for (int i = 0; i < nrecvs; i++)
          recvcounts[i] = rdispls[i+1] - rdispls[i];
-      long* global_sidx = NULL;
       double *sendbuf = NULL;
-      long* global_ridx = NULL;
       double* recvbuf = NULL;
       if (nsends)
       {
-         global_sidx = (long*)malloc(sdispls[nsends]*sizeof(long));
          sendbuf = (double*)malloc(sdispls[nsends]*sizeof(double));
       }
       if (nrecvs)
       {
-         global_ridx = (long*)malloc(rdispls[nrecvs]*sizeof(long));
          recvbuf = (double*)malloc(rdispls[nrecvs]*sizeof(double));
       }
 
       int* send_map_elmts = hypre_ParCSRCommPkgSendMapElmts(comm_pkg);
       int first_col_diag = hypre_ParCSRMatrixFirstColDiag(A_array[i]);
       int* col_map_offd = hypre_ParCSRMatrixColMapOffd(A_array[i]);
-      for (int i = 0; i < nsends; i++)
-         for (int j = sdispls[i]; j < sdispls[i+1]; j++)
-            global_sidx[j] = send_map_elmts[j] + first_col_diag;
-      for (int i = 0; i < nrecvs; i++)
-         for (int j = rdispls[i]; j < rdispls[i+1]; j++)
-            global_ridx[j] = col_map_offd[j];
 
       // Dist Graph Create Adjacent
       MPI_Barrier(comm);
@@ -1390,7 +1380,6 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
             MPI_INFO_NULL,
             0,
             &neighbor_comm);
-//      update_locality(neighbor_comm, 4);
 
       tfinal = MPI_Wtime() - t0;
       MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
@@ -1400,17 +1389,14 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       // Neighbor Alltoallv Init Time
       MPI_Barrier(comm);
       t0 = MPI_Wtime();
-      MPIX_Neighbor_locality_alltoallv_init(
-      //MPIX_Neighbor_part_locality_alltoallv_init(
+      MPIX_Neighbor_alltoallv_init(
             sendbuf,
             sendcounts, 
             hypre_ParCSRCommPkgSendMapStarts(comm_pkg),
-            global_sidx,
             MPI_DOUBLE, 
             recvbuf,
             recvcounts,
             hypre_ParCSRCommPkgRecvVecStarts(comm_pkg),
-            global_ridx,
             MPI_DOUBLE,
             neighbor_comm,
             MPI_INFO_NULL,
