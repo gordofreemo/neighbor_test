@@ -1375,6 +1375,35 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       int first_col_diag = hypre_ParCSRMatrixFirstColDiag(A_array[i]);
       int* col_map_offd = hypre_ParCSRMatrixColMapOffd(A_array[i]);
 
+      // hypre_DataExchangeList
+      hypre_DataExchangeResponse response_obj;
+      response_obj.fill_response = hypre_FillResponseIJDetermineSendProcs;
+      response_obj.data1 = NULL;
+      response_obj.data2 = NULL;
+      int* response_buf = NULL;
+      int* response_buf_starts = NULL;
+
+      MPI_Barrier(comm);
+      t0 = MPI_Wtime();
+      hypre_DataExchangeList(
+         nrecvs,
+         hypre_ParCSRCommPkgRecvProcs(comm_pkg),
+         sendbuf,
+         hypre_ParCSRCommPkgRecvVecStarts(comm_pkg),
+         sizeof(double),
+         sizeof(double),
+         &response_obj,
+         6,
+         1,
+         comm,
+         (void** ) &response_buf,
+         &response_buf_starts
+      );
+      tfinal = MPI_Wtime() - t0;
+      MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
+            hypre_ParCSRCommPkgComm(comm_pkg));
+      if (rank == 0) printf("Hypre DataExchangeList time %e\n", t0);
+
       // Dist Graph Create Adjacent
       MPI_Barrier(comm);
       t0 = MPI_Wtime();
@@ -1394,6 +1423,59 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
             hypre_ParCSRCommPkgComm(comm_pkg));
       if (rank == 0) printf("Dist Graph Create Time %e\n", t0);
+
+      // Comm topo init
+      MPI_Barrier(comm);
+      t0 = MPI_Wtime();
+      MPIX_Comm_topo_init(neighbor_comm); 
+      tfinal = MPI_Wtime() - t0;
+      MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
+            hypre_ParCSRCommPkgComm(comm_pkg));
+      if (rank == 0) printf("Comm Topo Init Time %e\n", t0);     
+
+       // Initialization of variables needed for crs methods 
+      int* recv_info = (int *) malloc(sizeof(int) * 2 * num_procs);
+      int recv_nnz, recv_size;
+      for(int i = 0; i < nrecvs; i++)
+      {
+         int proc = hypre_ParCSRCommPkgRecvProcs(comm_pkg)[i];
+         recv_info[proc] = 1;
+         recv_info[proc+num_procs] = sendcounts[i];
+      }
+      MPI_Allreduce(MPI_IN_PLACE, recv_info, 2*num_procs, MPI_INT, MPI_SUM, comm);
+      recv_nnz = recv_info[rank];
+      recv_size = recv_info[rank+num_procs];                                                                                                         
+
+      int* src = (int*) malloc(sizeof(int) * recv_nnz);
+      double* recvvals = (double*) malloc(sizeof(double) * recv_nnz);
+      
+      MPIX_Info* xinfo;
+      MPIX_Info_init(&xinfo);
+
+      //crs personalized
+      alltoallv_crs_personalized(
+         nrecvs,
+         hypre_ParCSRCommPkgSendMapStarts(comm_pkg)[nrecvs],
+         hypre_ParCSRCommPkgRecvProcs(comm_pkg),
+         sendcounts,
+         sdispls,
+         hypre_MPI_DOUBLE,
+         sendbuf,
+         &recv_nnz,
+         &recv_size,
+         src,
+         recvcounts,
+         rdispls,
+         hypre_MPI_DOUBLE,
+         recvvals,
+         xinfo,
+         neighbor_comm  
+      );
+      tfinal = MPI_Wtime() - t0;
+      MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
+            hypre_ParCSRCommPkgComm(comm_pkg));
+      if (rank == 0) printf("CSR Personalized Time %e\n", t0);
+      MPIX_Info_free(&xinfo);
 
       // Neighbor Alltoallv Init Time
       MPI_Barrier(comm);
