@@ -1375,11 +1375,12 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       int first_col_diag = hypre_ParCSRMatrixFirstColDiag(A_array[i]);
       int* col_map_offd = hypre_ParCSRMatrixColMapOffd(A_array[i]);
 
+      /*
       // hypre_DataExchangeList
-      hypre_DataExchangeResponse response_obj;
-      response_obj.fill_response = hypre_FillResponseIJDetermineSendProcs;
-      response_obj.data1 = NULL;
-      response_obj.data2 = NULL;
+      hypre_DataExchangeResponse* response_obj = (hypre_DataExchangeResponse*) malloc(sizeof(hypre_DataExchangeResponse)); 
+      response_obj->fill_response = hypre_FillResponseIJDetermineSendProcs;
+      response_obj->data1 = NULL;
+      response_obj->data2 = NULL;
       int* response_buf = NULL;
       int* response_buf_starts = NULL;
 
@@ -1392,7 +1393,7 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
          hypre_ParCSRCommPkgRecvVecStarts(comm_pkg),
          sizeof(double),
          sizeof(double),
-         &response_obj,
+         response_obj,
          6,
          1,
          comm,
@@ -1403,6 +1404,8 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
             hypre_ParCSRCommPkgComm(comm_pkg));
       if (rank == 0) printf("Hypre DataExchangeList time %e\n", t0);
+      free(response_obj);
+      */
 
       // Dist Graph Create Adjacent
       MPI_Barrier(comm);
@@ -1423,6 +1426,7 @@ HYPRE_Int hypre_BoomerAMGMatTimes(void* data)
       MPI_Reduce(&tfinal, &t0, 1, MPI_DOUBLE, MPI_MAX, 0,
             hypre_ParCSRCommPkgComm(comm_pkg));
       if (rank == 0) printf("Dist Graph Create Time %e\n", t0);
+
 
       // Comm topo init
       MPI_Barrier(comm);
